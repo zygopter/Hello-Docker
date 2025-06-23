@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.env
+
+# Docker
+*.log
+db_data/
+
+# Node
+node_modules/
+dist/
+*.local
+*.env
+
+# VSCode
+.vscode/
+
+# Mac
+.DS_Store
