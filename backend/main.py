@@ -7,7 +7,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from dotenv import load_dotenv
 
@@ -22,11 +22,6 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Modèle de table
-class Message(Base):
-    __tablename__ = "messages"
-    id = Column(Integer, primary_key=True, index=True)
-    content = Column(String, index=True)
 
 # # Création automatique de la table si nécessaire
 # Base.metadata.create_all(bind=engine)
@@ -69,33 +64,6 @@ app.add_middleware(
     allow_headers=["*"],          # Content-Type, Authorization…
 )
 
-# Schémas Pydantic
-class MessageIn(BaseModel):
-    content: str
-
-class MessageOut(BaseModel):
-    id: int
-    content: str
-
-# Point d'entrée POST
-@app.post("/messages/", response_model=MessageOut)
-def create_message(msg: MessageIn):
-    db = SessionLocal()
-    db_msg = Message(content=msg.content)
-    db.add(db_msg)
-    db.commit()
-    db.refresh(db_msg)
-    db.close()
-    return MessageOut(id=db_msg.id, content=db_msg.content)
-
-# Point d'entrée GET
-@app.get("/messages/{message_id}", response_model=MessageOut)
-def read_message(message_id: int):
-    db = SessionLocal()
-    db_msg = db.query(Message).get(message_id)
-    db.close()
-    return MessageOut(id=db_msg.id, content=db_msg.content)
-
 # --- Modèle SQLAlchemy pour User ---
 class User(Base):
     __tablename__ = "users"
@@ -132,7 +100,7 @@ async def websocket_users(websocket: WebSocket):
 
 @app.post("/users/", response_model=UserOut)
 async def create_user(user: UserIn, db: Session = Depends(get_db)):
-    db_user = User(**user.dict())
+    db_user = User(**user.model_dump())
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -151,7 +119,7 @@ def list_users(db: Session = Depends(get_db)):
 
 @app.get("/users/{user_id}", response_model=UserOut)
 def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).get(user_id)
+    user = db.get(User, user_id)
     db.close()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -160,11 +128,11 @@ def get_user(user_id: int, db: Session = Depends(get_db)):
 @app.put("/users/{user_id}", response_model=UserOut)
 async def update_user(user_id: int, user_in: UserIn, db: Session = Depends(get_db)):
     # Récupère l'utilisateur existant
-    db_user = db.query(User).get(user_id)
+    db_user = db.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     # Applique les modifications
-    for field, value in user_in.dict().items():
+    for field, value in user_in.model_dump().items():
         setattr(db_user, field, value)
     db.commit()
     db.refresh(db_user)
@@ -183,7 +151,7 @@ async def update_user(user_id: int, user_in: UserIn, db: Session = Depends(get_d
 
 @app.delete("/users/{user_id}")
 async def delete_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(User).get(user_id)
+    db_user = db.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
     db.delete(db_user)
